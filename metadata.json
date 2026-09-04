@@ -1,0 +1,6 @@
+{
+  "name": "OfficeTask Voice & Attendance Assistant",
+  "description": "Local/hybrid voice-activated office assistant tracking face recognition attendance via RTSP IP cameras and managing employee tasks with LLM tool-calling.",
+  "requestFramePermissions": ["camera", "microphone"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

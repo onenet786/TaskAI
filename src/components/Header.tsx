@@ -49,6 +49,17 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Real-time Hardware Telemetry Bar */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md border ${
+              systemHealth?.gemini_configured
+                ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
+                : 'bg-amber-500/10 border-amber-500/30 text-amber-300'
+            }`}>
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span className="font-semibold font-mono">
+                {systemHealth?.gemini_configured ? 'Gemini API Connected' : 'Gemini API Not Configured'}
+              </span>
+            </div>
+
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300">
               <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
               <span className="text-emerald-400 font-semibold font-mono">Node.js 20</span>

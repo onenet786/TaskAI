@@ -18,13 +18,18 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
 
   // Reference to Web Speech API SpeechRecognition
   const recognitionRef = useRef<any>(null);
+  const listeningSessionRef = useRef(false);
+  const recognitionPausedRef = useRef(false);
+  const speechTokenRef = useRef(0);
+  const queryQueueRef = useRef(Promise.resolve());
+  const submitQueryRef = useRef<(query: string) => Promise<void>>(async () => {});
 
   // Initialize Web Speech Recognition if supported
   useEffect(() => {
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (SpeechRecognition) {
       const recognition = new SpeechRecognition();
-      recognition.continuous = false;
+      recognition.continuous = true;
       recognition.interimResults = true;
       recognition.lang = 'en-US';
 
@@ -34,31 +39,68 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
       };
 
       recognition.onresult = (event: any) => {
-        const transcript = Array.from(event.results)
-          .map((result: any) => result[0].transcript)
-          .join('');
-        setInputText(transcript);
+        if (recognitionPausedRef.current) return;
+
+        let interimTranscript = '';
+
+        for (let index = event.resultIndex; index < event.results.length; index += 1) {
+          const transcript = event.results[index][0].transcript.trim();
+          if (event.results[index].isFinal && transcript) {
+            queryQueueRef.current = queryQueueRef.current.then(() => submitQueryRef.current(transcript));
+          } else {
+            interimTranscript += event.results[index][0].transcript;
+          }
+        }
+
+        setInputText(interimTranscript);
       };
 
       recognition.onerror = (event: any) => {
+        if (recognitionPausedRef.current) return;
         console.warn('Speech recognition error:', event.error);
         if (event.error !== 'no-speech') {
+          listeningSessionRef.current = false;
           setSpeechError(`Speech recognition: ${event.error}`);
+          setIsListening(false);
         }
-        setIsListening(false);
       };
 
       recognition.onend = () => {
-        setIsListening(false);
+        if (!listeningSessionRef.current) {
+          setIsListening(false);
+          return;
+        }
+        if (recognitionPausedRef.current) return;
+
+        window.setTimeout(() => {
+          if (!listeningSessionRef.current) return;
+          try {
+            recognition.start();
+          } catch (e) {
+            console.warn(e);
+          }
+        }, 250);
       };
 
       recognitionRef.current = recognition;
     }
+
+    return () => {
+      listeningSessionRef.current = false;
+      recognitionRef.current?.stop();
+    };
   }, []);
 
   // Text-To-Speech handler using browser SpeechSynthesis
   const speakText = (text: string) => {
     if (!ttsEnabled || !window.speechSynthesis) return;
+
+    const speechToken = ++speechTokenRef.current;
+    if (listeningSessionRef.current) {
+      recognitionPausedRef.current = true;
+      setInputText('');
+      recognitionRef.current?.stop();
+    }
 
     window.speechSynthesis.cancel(); // Stop prior speech
     const utterance = new SpeechSynthesisUtterance(text);
@@ -72,22 +114,41 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
       utterance.voice = naturalVoice;
     }
 
+    const finishSpeaking = () => {
+      if (speechToken !== speechTokenRef.current) return;
+      setIsSpeaking(false);
+      recognitionPausedRef.current = false;
+      if (!listeningSessionRef.current) return;
+
+      window.setTimeout(() => {
+        if (!listeningSessionRef.current || recognitionPausedRef.current) return;
+        try {
+          recognitionRef.current?.start();
+        } catch (e) {
+          console.warn(e);
+        }
+      }, 250);
+    };
+
     utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    utterance.onend = finishSpeaking;
+    utterance.onerror = finishSpeaking;
 
     window.speechSynthesis.speak(utterance);
   };
 
   const toggleListening = () => {
     if (isListening) {
+      listeningSessionRef.current = false;
       recognitionRef.current?.stop();
       setIsListening(false);
     } else {
       if (recognitionRef.current) {
         try {
+          listeningSessionRef.current = true;
           recognitionRef.current.start();
         } catch (e) {
+          listeningSessionRef.current = false;
           console.warn(e);
         }
       } else {
@@ -142,6 +203,8 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
       setIsProcessing(false);
     }
   };
+
+  submitQueryRef.current = submitQuery;
 
   // Seed with initial greeting
   useEffect(() => {

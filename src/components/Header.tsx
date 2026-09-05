@@ -50,7 +50,12 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Real-time Hardware Telemetry Bar */}
           <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
             <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              <span className="h-2 w-2 rounded-full bg-emerald-400"></span>
+              <span className="text-emerald-400 font-semibold font-mono">Node.js 20</span>
+              <span className="text-slate-400">Express</span>
+            </div>
+
+            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-800/80 border border-slate-700/60 text-slate-300">
               <Camera className="w-3.5 h-3.5 text-cyan-400" />
               <span>RTSP Cam 01</span>
               <span className="text-slate-400 font-mono">1080p@25</span>
@@ -131,8 +136,8 @@ export const Header: React.FC<HeaderProps> = ({
                 : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/50'
             }`}
           >
-            <Cpu className="w-4 h-4 text-blue-400" />
-            <span>System Design & Python Code</span>
+            <Cpu className="w-4 h-4 text-emerald-400" />
+            <span>Architecture & Code (Node / Python)</span>
           </button>
         </div>
       </div>

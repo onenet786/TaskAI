@@ -66,3 +66,22 @@ export interface RTSPEvent {
   camera_id: string;
   message: string;
 }
+
+export type AgentBuiltinFunction =
+  | 'get_active_attendees'
+  | 'get_employee_attendance'
+  | 'get_pending_tasks'
+  | 'get_morning_summary'
+  | 'get_late_arrivals'
+  | 'get_department_summary';
+
+export interface CustomCommand {
+  id: number;
+  name: string;
+  trigger_phrases: string[];
+  action_type: 'static' | 'function';
+  response_text?: string;
+  target_function?: AgentBuiltinFunction;
+  is_active: boolean;
+  created_at: string;
+}

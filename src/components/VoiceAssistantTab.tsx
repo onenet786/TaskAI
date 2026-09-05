@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Mic, MicOff, Volume2, VolumeX, Send, Terminal, Sparkles, Clock, CheckCircle2, ChevronRight, Play, AlertCircle, Database } from 'lucide-react';
-import { VoiceQueryResponse } from '../types';
+import { Mic, MicOff, Volume2, VolumeX, Send, Terminal, Sparkles, Clock, CheckCircle2, ChevronRight, Play, AlertCircle, Database, Settings, Plus, Trash2, Edit2, X } from 'lucide-react';
+import { VoiceQueryResponse, CustomCommand, AgentBuiltinFunction } from '../types';
 
 interface VoiceAssistantTabProps {
   onQuerySubmitted?: () => void;
@@ -15,6 +15,18 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
   const [history, setHistory] = useState<VoiceQueryResponse[]>([]);
   const [activeToolDetails, setActiveToolDetails] = useState<VoiceQueryResponse | null>(null);
   const [speechError, setSpeechError] = useState<string | null>(null);
+
+  // Custom commands state
+  const [customCommands, setCustomCommands] = useState<CustomCommand[]>([]);
+  const [isCommandManagerOpen, setIsCommandManagerOpen] = useState(false);
+  const [editingCommand, setEditingCommand] = useState<CustomCommand | null>(null);
+  const [cmdForm, setCmdForm] = useState({
+    name: '',
+    triggerPhrases: '',
+    actionType: 'static' as 'static' | 'function',
+    responseText: '',
+    targetFunction: 'get_active_attendees' as AgentBuiltinFunction,
+  });
 
   // Reference to Web Speech API SpeechRecognition
   const recognitionRef = useRef<any>(null);
@@ -206,6 +218,22 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
 
   submitQueryRef.current = submitQuery;
 
+  // Load custom voice commands from backend
+  const loadCustomCommands = async () => {
+    try {
+      const res = await fetch('/api/custom-commands');
+      if (res.ok) {
+        setCustomCommands(await res.json());
+      }
+    } catch (err) {
+      console.warn('Failed to load custom commands:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadCustomCommands();
+  }, []);
+
   // Seed with initial greeting
   useEffect(() => {
     if (history.length === 0) {
@@ -225,8 +253,94 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
     { text: "Who is in the office right now?", desc: "Query active IN statuses" },
     { text: "Did Alex check in today, and at what time?", desc: "Query Alex's attendance log" },
     { text: "What tasks are pending for Sarah?", desc: "Query pending tasks by employee" },
-    { text: "Give me a morning summary.", desc: "Headcount, late arrivals & critical tasks" }
+    { text: "Give me a morning summary.", desc: "Headcount, late arrivals & critical tasks" },
+    { text: "Who arrived late today?", desc: "Late arrivals after 9:30 AM" },
+    { text: "Show department presence.", desc: "Headcount grouped by department" }
   ];
+
+  const builtinFunctionOptions: { value: AgentBuiltinFunction; label: string }[] = [
+    { value: 'get_active_attendees', label: 'Active attendees' },
+    { value: 'get_employee_attendance', label: 'Employee attendance' },
+    { value: 'get_pending_tasks', label: 'Pending tasks' },
+    { value: 'get_morning_summary', label: 'Morning summary' },
+    { value: 'get_late_arrivals', label: 'Late arrivals' },
+    { value: 'get_department_summary', label: 'Department summary' },
+  ];
+
+  const resetCmdForm = (cmd?: CustomCommand) => {
+    if (cmd) {
+      setEditingCommand(cmd);
+      setCmdForm({
+        name: cmd.name,
+        triggerPhrases: cmd.trigger_phrases.join(', '),
+        actionType: cmd.action_type,
+        responseText: cmd.response_text || '',
+        targetFunction: (cmd.target_function as AgentBuiltinFunction) || 'get_active_attendees',
+      });
+    } else {
+      setEditingCommand(null);
+      setCmdForm({
+        name: '',
+        triggerPhrases: '',
+        actionType: 'static',
+        responseText: '',
+        targetFunction: 'get_active_attendees',
+      });
+    }
+  };
+
+  const handleSaveCommand = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const payload = {
+      name: cmdForm.name.trim(),
+      trigger_phrases: cmdForm.triggerPhrases.split(',').map((s) => s.trim()).filter(Boolean),
+      action_type: cmdForm.actionType,
+      response_text: cmdForm.actionType === 'static' ? cmdForm.responseText.trim() : null,
+      target_function: cmdForm.actionType === 'function' ? cmdForm.targetFunction : null,
+    };
+
+    try {
+      const res = await fetch(
+        editingCommand ? `/api/custom-commands/${editingCommand.id}` : '/api/custom-commands',
+        {
+          method: editingCommand ? 'PATCH' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        }
+      );
+      if (res.ok) {
+        await loadCustomCommands();
+        resetCmdForm();
+      }
+    } catch (err) {
+      console.error('Save command error:', err);
+    }
+  };
+
+  const handleDeleteCommand = async (id: number) => {
+    try {
+      const res = await fetch(`/api/custom-commands/${id}`, { method: 'DELETE' });
+      if (res.ok) {
+        await loadCustomCommands();
+        if (editingCommand?.id === id) resetCmdForm();
+      }
+    } catch (err) {
+      console.error('Delete command error:', err);
+    }
+  };
+
+  const toggleCommandActive = async (cmd: CustomCommand) => {
+    try {
+      const res = await fetch(`/api/custom-commands/${cmd.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_active: !cmd.is_active }),
+      });
+      if (res.ok) await loadCustomCommands();
+    } catch (err) {
+      console.error('Toggle command error:', err);
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -261,14 +375,23 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
                   setTtsEnabled(!ttsEnabled);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                  ttsEnabled 
-                    ? 'bg-slate-800 text-cyan-300 border border-slate-700 hover:bg-slate-750' 
+                  ttsEnabled
+                    ? 'bg-slate-800 text-cyan-300 border border-slate-700 hover:bg-slate-750'
                     : 'bg-slate-800/50 text-slate-400 border border-slate-800 hover:text-slate-300'
                 }`}
                 title={ttsEnabled ? 'Mute Assistant Voice' : 'Enable Assistant Voice'}
               >
                 {ttsEnabled ? <Volume2 className="w-3.5 h-3.5 text-cyan-400" /> : <VolumeX className="w-3.5 h-3.5" />}
                 <span>{ttsEnabled ? 'TTS Output ON' : 'TTS Muted'}</span>
+              </button>
+
+              <button
+                onClick={() => setIsCommandManagerOpen(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-slate-300 border border-slate-700 hover:bg-slate-700 hover:text-white transition-colors cursor-pointer"
+                title="Manage custom voice commands"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Custom Commands</span>
               </button>
             </div>
           </div>
@@ -393,6 +516,26 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
                     </div>
                     <div className="text-[11px] text-slate-400 truncate">
                       {q.desc}
+                    </div>
+                  </div>
+                </button>
+              ))}
+              {customCommands.filter((c) => c.is_active).map((cmd) => (
+                <button
+                  key={cmd.id}
+                  onClick={() => submitQuery(cmd.trigger_phrases[0] || cmd.name)}
+                  disabled={isProcessing}
+                  className="flex items-start gap-2.5 p-2.5 rounded-xl bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 hover:border-purple-400/50 text-left transition-all group cursor-pointer"
+                >
+                  <div className="p-1 rounded-md bg-purple-500/10 text-purple-400 mt-0.5 group-hover:bg-purple-500/20">
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="text-xs font-medium text-slate-200 group-hover:text-purple-300 truncate">
+                      "{cmd.trigger_phrases[0] || cmd.name}"
+                    </div>
+                    <div className="text-[11px] text-slate-400 truncate">
+                      {cmd.action_type === 'static' ? 'Custom reply' : `Runs: ${cmd.target_function}`}
                     </div>
                   </div>
                 </button>
@@ -567,6 +710,174 @@ export const VoiceAssistantTab: React.FC<VoiceAssistantTabProps> = ({ onQuerySub
 
       </div>
 
+      {/* Custom Commands Manager Modal */}
+      {isCommandManagerOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-800">
+              <div>
+                <h3 className="text-base font-bold text-white flex items-center gap-2">
+                  <Settings className="w-4 h-4 text-cyan-400" />
+                  Custom Voice Commands
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  Add phrases that trigger a static reply or run a built-in function.
+                </p>
+              </div>
+              <button
+                onClick={() => { setIsCommandManagerOpen(false); resetCmdForm(); }}
+                className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-white"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveCommand} className="space-y-3 text-xs">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Command name</label>
+                  <input
+                    type="text"
+                    required
+                    value={cmdForm.name}
+                    onChange={(e) => setCmdForm({ ...cmdForm, name: e.target.value })}
+                    placeholder="e.g. Office hours"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-slate-400 mb-1">Trigger phrases (comma-separated)</label>
+                  <input
+                    type="text"
+                    required
+                    value={cmdForm.triggerPhrases}
+                    onChange={(e) => setCmdForm({ ...cmdForm, triggerPhrases: e.target.value })}
+                    placeholder="what are the office hours, when do we open"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-slate-400 mb-1">Action type</label>
+                  <select
+                    value={cmdForm.actionType}
+                    onChange={(e) => setCmdForm({ ...cmdForm, actionType: e.target.value as 'static' | 'function' })}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                  >
+                    <option value="static">Static reply</option>
+                    <option value="function">Run built-in function</option>
+                  </select>
+                </div>
+                {cmdForm.actionType === 'function' && (
+                  <div>
+                    <label className="block text-slate-400 mb-1">Built-in function</label>
+                    <select
+                      value={cmdForm.targetFunction}
+                      onChange={(e) => setCmdForm({ ...cmdForm, targetFunction: e.target.value as AgentBuiltinFunction })}
+                      className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none"
+                    >
+                      {builtinFunctionOptions.map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
+              {cmdForm.actionType === 'static' && (
+                <div>
+                  <label className="block text-slate-400 mb-1">Static response</label>
+                  <textarea
+                    required={cmdForm.actionType === 'static'}
+                    value={cmdForm.responseText}
+                    onChange={(e) => setCmdForm({ ...cmdForm, responseText: e.target.value })}
+                    placeholder="Our office hours are 9 AM to 6 PM, Monday through Friday."
+                    rows={3}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-lg p-2.5 text-slate-200 focus:outline-none focus:border-cyan-500 resize-none"
+                  />
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-medium transition-colors cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {editingCommand ? 'Update Command' : 'Add Command'}
+                </button>
+                {editingCommand && (
+                  <button
+                    type="button"
+                    onClick={() => resetCmdForm()}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </form>
+
+            <div className="border-t border-slate-800 pt-4 space-y-2">
+              <h4 className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                Saved Commands ({customCommands.length})
+              </h4>
+              {customCommands.length === 0 ? (
+                <p className="text-xs text-slate-500">No custom commands yet.</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {customCommands.map((cmd) => (
+                    <div
+                      key={cmd.id}
+                      className="flex items-start justify-between gap-3 p-3 rounded-xl bg-slate-950 border border-slate-800"
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-slate-200 text-xs">{cmd.name}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${cmd.is_active ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'}`}>
+                            {cmd.is_active ? 'Active' : 'Disabled'}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-1 truncate">
+                          Triggers: {cmd.trigger_phrases.join(', ')}
+                        </div>
+                        <div className="text-[11px] text-slate-500 truncate">
+                          {cmd.action_type === 'static' ? `Reply: ${cmd.response_text}` : `Function: ${cmd.target_function}`}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <button
+                          onClick={() => toggleCommandActive(cmd)}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+                          title={cmd.is_active ? 'Disable' : 'Enable'}
+                        >
+                          {cmd.is_active ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> : <Clock className="w-3.5 h-3.5" />}
+                        </button>
+                        <button
+                          onClick={() => resetCmdForm(cmd)}
+                          className="p-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700"
+                          title="Edit"
+                        >
+                          <Edit2 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteCommand(cmd.id)}
+                          className="p-1.5 rounded-lg bg-slate-800 text-rose-300 hover:bg-rose-950 hover:text-rose-200"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

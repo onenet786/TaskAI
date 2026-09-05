@@ -16,6 +16,7 @@ Default port: **3000**. We will run it behind aaPanel's Nginx reverse proxy with
 - Ubuntu 24.04 dedicated server with aaPanel installed and working
 - An existing aaPanel account with permission to add Node sites
 - A domain or subdomain pointed at the server (e.g. `officetask.yourdomain.com`)
+- A **PostgreSQL** database server (local or managed)
 - A **Gemini API key** from Google AI Studio → https://aistudio.google.com/app/apikey
 - (Optional, for live camera attendance) An RTSP IP camera at the office door
 
@@ -63,7 +64,32 @@ The final layout should be:
 
 ---
 
-## 2. Install Dependencies
+## 1.5. Set Up PostgreSQL
+
+The app stores employees, attendance logs, tasks, and custom voice commands in PostgreSQL.
+
+On the aaPanel server:
+
+```bash
+# Install Postgres (if not already available via aaPanel)
+sudo apt update
+sudo apt install postgresql postgresql-contrib -y
+
+# Create database and user
+sudo -u postgres psql -c "CREATE DATABASE taskai;"
+sudo -u postgres psql -c "CREATE USER taskai_user WITH PASSWORD 'your_secure_password';"
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE taskai TO taskai_user;"
+```
+
+Then in step 3 set `DATABASE_URL`:
+
+```env
+DATABASE_URL="postgresql://taskai_user:your_secure_password@localhost:5432/taskai"
+```
+
+The app automatically creates tables and seeds demo data on first start.
+
+## 3. Install Dependencies
 
 In aaPanel Terminal:
 
@@ -91,6 +117,7 @@ Set the values:
 ```env
 GEMINI_API_KEY="your_real_gemini_api_key_here"
 APP_URL="https://officetask.yourdomain.com"
+DATABASE_URL="postgresql://taskai_user:your_secure_password@localhost:5432/taskai"
 ```
 
 Save and exit (`Ctrl+O`, `Enter`, `Ctrl+X`).
@@ -298,8 +325,9 @@ pm2 restart officetask
 
 Back up at minimum:
 
-- `/www/wwwroot/officetask/.env` (contains the API key)
+- `/www/wwwroot/officetask/.env` (contains the API key and database URL)
 - `/www/wwwroot/officetask/embeddings/` (enrolled face vectors — see USER_GUIDE.md)
+- The PostgreSQL database: `pg_dump taskai > taskai_backup.sql`
 - `/www/wwwroot/officetask/office_assistant.db` (if using the live camera engine)
 
 aaPanel → **Cron** can schedule a daily tarball of these paths to your backup
@@ -326,7 +354,6 @@ destination.
 - [ ] Gemini API key restricted to your server's IP in Google AI Studio if possible
 - [ ] aaPanel firewall (Security tab) only exposes 22, 80, 443 — **not** 3000
 - [ ] Force HTTPS enabled on the site
-- [ ] `office_assistant.db` and `embeddings/` are not under the web root served
-      by Nginx (they live in `/www/wwwroot/officetask/` but Nginx only serves
-      `dist/`, so they are safe — verify your reverse proxy only forwards `/api/`)
+- [ ] `.env` is never exposed via Nginx (Nginx only serves `dist/`; verify the
+      reverse proxy only forwards `/api/`)
 - [ ] Regular `pm2 save` so the process list survives reboots

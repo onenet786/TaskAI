@@ -158,7 +158,7 @@ export default function App() {
             <span>Local Office IoT Cluster &bull; Node.js 20 (Express) + Face-API / ONNX + Gemini Reasoner</span>
           </div>
           <div className="text-slate-400">
-            <span>RTSP Port: 554 &bull; SQLite DB: office_assistant.db &bull; Mic VAD: Active</span>
+            <span>RTSP Port: 554 &bull; PostgreSQL &bull; Mic VAD: Active</span>
           </div>
         </div>
       </footer>

@@ -87,7 +87,7 @@ Then in step 3 set `DATABASE_URL`:
 DATABASE_URL="postgresql://taskai_user:your_secure_password@localhost:5432/taskai"
 ```
 
-The app automatically creates tables and seeds demo data on first start.
+The app automatically creates tables and seeds demo data on first start. If Postgres is not configured or unreachable, the server starts in **in-memory demo mode** so the UI keeps working (data resets on restart until Postgres is connected).
 
 ## 3. Install Dependencies
 
@@ -345,6 +345,7 @@ destination.
 | Gemini calls time out through Nginx | Raise `proxy_read_timeout` in the `location /api/` block to `120s` and reload Nginx |
 | Port 3000 already in use by another aaPanel Node site | Edit `server.ts` `const PORT = 3000;` or set `PORT=3001` in `.env` and update the reverse proxy target accordingly. Note: the current `server.ts` hardcodes 3000 — change the source or patch it to read `process.env.PORT` |
 | `npm run build` fails on `esbuild` | Ensure Node ≥ 20 and run `npm install` (full, not `--omit=dev`) so devDependencies (`esbuild`, `typescript`) are present |
+| 502 Bad Gateway after migrating to Postgres | The server now auto-falls back to in-memory mode if Postgres is unreachable, but check `pm2 logs officetask` to confirm. Set `DATABASE_URL` correctly and restart. |
 
 ---
 
